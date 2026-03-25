@@ -1,0 +1,1 @@
+TF-IDF stands for Term Frequency-Inverse Document Frequency. It is used in information retrieval.
