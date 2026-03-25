@@ -1,7 +1,8 @@
 import os
 import requests
+import json
 from bs4 import BeautifulSoup
-from typing import Dict
+from typing import Dict, Any
 
 class DocumentLoader:
     """
@@ -9,52 +10,70 @@ class DocumentLoader:
     """
     
     @staticmethod
-    def load_local_documents(folder_path: str) -> Dict[str, str]:
-        """
-        Reads all text files in a specified folder.
-        
-        Args:
-            folder_path (str): The directory containing text files.
-            
-        Returns:
-            Dict[str, str]: A dictionary where keys are filenames and values are the text content.
-        """
+    def load_local_documents(folder_path: str) -> Dict[str, Any]:
+        """Reads files in a specified folder. Supports .txt and .json files."""
         documents = {}
         if not os.path.exists(folder_path):
             print(f"Directory {folder_path} does not exist.")
             return documents
 
         for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
             if filename.endswith(".txt"):
-                file_path = os.path.join(folder_path, filename)
                 with open(file_path, "r", encoding="utf-8") as f:
-                    documents[filename] = f.read().strip()
+                    documents[filename] = {"text": f.read().strip()}
+            elif filename.endswith(".json"):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    try:
+                        data = json.load(f)
+                        if "text" in data:
+                            documents[filename] = data
+                    except json.JSONDecodeError:
+                        print(f"Error parsing JSON in {filename}")
                     
         return documents
 
     @staticmethod
-    def crawl_webpage(url: str) -> Dict[str, str]:
+    def crawl_webpage(url: str) -> Dict[str, Any]:
         """
-        Fetches text from a single webpage using BeautifulSoup.
-        
-        Args:
-            url (str): The URL to crawl.
-            
-        Returns:
-            Dict[str, str]: A dictionary mapping the URL to its fetched plain text content.
+        Fetches text from a single webpage using BeautifulSoup, and extracts OpenGraph metadata.
         """
         try:
-            response = requests.get(url, timeout=5)
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            response = requests.get(url, headers=headers, timeout=5)
             response.raise_for_status()  # Check for HTTP errors
             
             # Parse HTML and extract raw text
             soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Extract OpenGraph and SEO Metadata
+            og_image = soup.find("meta", property="og:image")
+            og_title = soup.find("meta", property="og:title")
+            meta_desc = soup.find("meta", attrs={"name": "description"})
+            
+            image_url = og_image["content"] if og_image and og_image.get("content") else None
+            title = og_title["content"] if og_title and og_title.get("content") else soup.title.string if soup.title else url
+            description = meta_desc["content"] if meta_desc and meta_desc.get("content") else ""
+            
+            # Extract Headings
+            headings = []
+            for h in soup.find_all(['h1', 'h2']):
+                if h.get_text(strip=True):
+                    headings.append(h.get_text(strip=True))
+            
             # Remove script and style elements
             for script in soup(["script", "style"]):
                 script.extract()
                 
             text = soup.get_text(separator=" ", strip=True)
-            return {url: text}
+            return {url: {
+                "url": url,
+                "title": title,
+                "meta_description": description,
+                "headings": headings,
+                "image_url": image_url,
+                "text": text
+            }}
         except Exception as e:
             print(f"Failed to crawl {url}: {e}")
             return {}

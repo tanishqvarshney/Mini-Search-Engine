@@ -7,43 +7,34 @@ class InvertedIndex:
     """
     
     def __init__(self):
-        # Maps a term directly to a dictionary of {document_id: frequency}
-        # e.g., index['search'] = {'doc1.txt': 2, 'doc2.txt': 1}
-        self.index: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        # Maps field -> term -> document_id -> frequency
+        # e.g., index['title']['search'] = {'doc1.txt': 1}
+        self.index: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
         
-        # Keeps track of all processed documents (useful for calculating IDF later)
+        # Keeps track of all processed documents
         self.document_ids: Set[str] = set()
 
-    def add_document(self, doc_id: str, tokens: List[str]):
+    def add_document(self, doc_id: str, field_tokens: Dict[str, List[str]]):
         """
-        Adds a document's tokens to the inverted index.
+        Adds tokens for various fields to the inverted index.
         
         Args:
-            doc_id (str): The unique identifier for the document.
-            tokens (List[str]): The preprocessed tokens of the document.
+            doc_id (str): Unique doc identifier.
+            field_tokens (Dict[str, List[str]]): A map of field_name -> tokens.
         """
         self.document_ids.add(doc_id)
         
-        for token in tokens:
-            self.index[token][doc_id] += 1
+        for field, tokens in field_tokens.items():
+            for token in tokens:
+                self.index[field][token][doc_id] += 1
 
-    def get_postings(self, term: str) -> Dict[str, int]:
-        """
-        Retrieves the postings list (documents and frequencies) for a given term.
+    def get_postings(self, term: str, field: str = "content") -> Dict[str, int]:
+        """Retrieves postings for a specific field."""
+        return self.index.get(field, {}).get(term, {})
         
-        Args:
-            term (str): The term to look up.
-            
-        Returns:
-            Dict[str, int]: A map of doc_id -> frequency for the given term.
-        """
-        return self.index.get(term, {})
-        
-    def get_document_frequency(self, term: str) -> int:
-        """
-        Returns the number of documents that contain the given term.
-        """
-        return len(self.index.get(term, {}))
+    def get_document_frequency(self, term: str, field: str = "content") -> int:
+        """Returns DF across all documents for a term in a specific field."""
+        return len(self.index.get(field, {}).get(term, {}))
 
     def get_total_documents(self) -> int:
         """

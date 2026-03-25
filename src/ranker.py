@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List
+from typing import Dict, List, Tuple, Any
 from indexer import InvertedIndex
 
 class Ranker:
@@ -20,49 +20,51 @@ class Ranker:
         return 1.0 + math.log(term_freq)
 
     def _compute_idf(self, doc_freq: int) -> float:
-        """
-        Computes the Inverse Document Frequency (IDF).
-        Using standard formula: log(N / df).
-        """
+        """Computes IDF."""
         total_docs = self.index.get_total_documents()
         if doc_freq == 0 or total_docs == 0:
             return 0.0
         return math.log(total_docs / doc_freq)
 
-    def score_documents(self, query_tokens: List[str]) -> Dict[str, float]:
+    def rank(self, query_tokens: List[str], entity_id: str = None) -> List[Tuple[str, float]]:
         """
-        Calculates the TF-IDF score for all documents that match the query.
+        Ranks documents using field-weighted TF-IDF and entity-awareness.
         
-        Args:
-            query_tokens (List[str]): Preprocessed query tokens.
-            
-        Returns:
-            Dict[str, float]: A dictionary mapping document IDs to their relevance score, 
-                              sorted highest to lowest.
+        Weights:
+        - Title Match: 5.0x
+        - Content Match: 1.0x
+        - Entity Match: 20.0x (Global multiplier)
         """
         scores: Dict[str, float] = {}
+        fields = {"title": 5.0, "content": 1.0}
 
-        for token in query_tokens:
-            postings = self.index.get_postings(token)
-            doc_freq = self.index.get_document_frequency(token)
-            idf = self._compute_idf(doc_freq)
-            
-            # If the term hasn't appeared anywhere, skip it
-            if idf == 0.0:
-                continue
+        for field, weight in fields.items():
+            for token in query_tokens:
+                postings = self.index.get_postings(token, field=field)
+                doc_freq = self.index.get_document_frequency(token, field=field)
+                idf = self._compute_idf(doc_freq)
                 
-            for doc_id, tf in postings.items():
-                tf_score = self._compute_tf(tf)
-                
-                # Ensure the document exists in our score tracking
-                if doc_id not in scores:
-                    scores[doc_id] = 0.0
+                if idf <= 0.0:
+                    continue
                     
-                # TF-IDF Score = TF * IDF
-                scores[doc_id] += tf_score * idf
+                for doc_id, tf in postings.items():
+                    tf_score = self._compute_tf(tf)
+                    if doc_id not in scores:
+                        scores[doc_id] = 0.0
+                    
+                    # Apply Field Weight
+                    scores[doc_id] += (tf_score * idf) * weight
+
+        # Apply Entity Boost if provided
+        if entity_id:
+            canon_id = entity_id.lower().replace(" ", "_")
+            for doc_id in scores:
+                normalized_doc = doc_id.lower().replace(" ", "_")
+                if canon_id in normalized_doc:
+                    scores[doc_id] *= 20.0
 
         # Sort documents by score in descending order
-        sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1], reverse=True))
+        sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         return sorted_scores
 
 # --- Development / Verification Block ---

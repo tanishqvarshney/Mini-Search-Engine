@@ -1,0 +1,39 @@
+{
+    "entities": {
+        "Virat Kohli": {
+            "aliases": ["virat", "kohli", "king kohli", "vk", "run machine"],
+            "type": "Cricketer",
+            "global_boost": 1.2
+        },
+        "MS Dhoni": {
+            "aliases": ["dhoni", "mahi", "msd", "captain cool", "thala"],
+            "type": "Cricketer",
+            "global_boost": 1.1
+        },
+        "Lionel Messi": {
+            "aliases": ["messi", "leo", "la pulga", "goat"],
+            "type": "Footballer",
+            "global_boost": 1.2
+        },
+        "Cristiano Ronaldo": {
+            "aliases": ["ronaldo", "cr7", "siuuu"],
+            "type": "Footballer",
+            "global_boost": 1.1
+        },
+        "Sachin Tendulkar": {
+            "aliases": ["sachin", "tendulkar", "master blaster", "god of cricket"],
+            "type": "Cricketer",
+            "global_boost": 1.1
+        },
+        "Real Madrid": {
+            "aliases": ["madrid", "los blancos", "real"],
+            "type": "Club",
+            "global_boost": 1.0
+        },
+        "Narendra Modi Stadium": {
+            "aliases": ["modi stadium", "motera"],
+            "type": "Venue",
+            "global_boost": 1.0
+        }
+    }
+}
