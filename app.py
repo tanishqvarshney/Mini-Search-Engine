@@ -924,29 +924,25 @@ with search_col:
 
             if (!container.querySelector('.tangen-search-icons')) {{
                 const icons = doc.createElement('div');
-                icons.className = 'tangen-search-icons';
-                icons.innerHTML = `
-                  <div class="tangen-search-icon-left" style="visibility:hidden">+</div>
+                icons.className = 'tangen-search-                icons.innerHTML = `
+                  <div class="tangen-search-icon-left tangen-toggle-ai-trigger" style="cursor:pointer; font-size:1.4rem;">🔍</div>
                   <div class="tangen-search-icon-right">
                     <div class="tangen-icon-btn" role="button">
-                      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAE4AAABGCAYAAABi+aJwAAACmUlEQVR4AeyY602CQRBFN5ZABfwmFEAplEEBhBoog1IogwpoQT2aJZuR+Lk37sN4Sa77mrvMHEYRXl79kAi8JD8kAgYnYUvJ4AxOJCDa3HEGJxIQbe44gxMJiDZ3nMGJBESbO87gRAKi7ZuOE2/8JzaDE19ogzM4kYBoc8cZnEhAtLnj/jq46/Wa0Pl8/hjFerrZhnccsPb7fcoCHHPGbhSEJxoODkjAi7kDbr1ex+1p1kPBAWeJBGCXYkacTw/uWTeOABWfcxi4GiA1sbHAVmsNXKts/tC9Bie+WAZncCIB0eaOMziRgGhzxxmcSEC0ueMMTiQg2txxBicSEG1NO44P53ynlsVayXO32z1sfBWV72NU73xcKE5+HVyZR1kw+xTNiOIZe4p+657a524KbimZw+GwFJJizKgOi4k2B1d2RCwaKOV5TI4zYsr98o54Vsa1njcHF4uLX4VfLpcvXUXR+DhjnlX+que9UWNzcHQNygXSMSivGYF0u93S7V3AYmSPsyygobxmjDHs9VJzcBQSC6TrIgTiUAmZNQJ0jI93EtdTXcABIxYKCLRULJBRGcddqNzrPe8CjqIoFIDMswDH/2KAYY7oLtaIM9Y5npE7uIv5SHUDR5H8/XpWNHCAhgDGGuEphZc7yr1R867gKJLiEfOfii4DWK3vp/crcd3BkSQA8jsnc/aeKQMDGvNnMaP2hoDLxQINAREwq9UqIebszQgs5z4UXE4ij/f7PaG8nnnsCW5mDtW5GVw1sk+DwX1yqP45DbjtdvvxYZ83i81mU11Ib8M04I7H4wPc6XTqzaH6+aYBV535YIPBiS+AwRmcSEC0ueMMTiQg2txxBicSEG2TdJyY/UCbwYnwDc7gRAKizR0ngnsDAAD//3mgaJoAAAAGSURBVAMA0o4AcxiYDHAAAAAASUVORK5CYII=" style="width:36px; height:36px; vertical-align:middle; filter: grayscale(1) invert({'1' if st.session_state.dark_mode else '0'}); opacity:0.8;">
-                    </div>
-                    <div class="tangen-ai-pill-internal {'active' if st.session_state.ai_mode else ''}" role="button" data-action="ai">
-                      <span>✨ AI Mode</span>
+                      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAE4AAABGCAYAAABi+aJwAAACmUlEQVR4AeyY602CQRBFN5ZABfwmFEAplEEBhBoog1IogwpoQT2aJZuR+Lk37sN4Sa77mrvMHEYRXl79kAi8JD8kAgYnYUvJ4AxOJCDa3HEGJxIQbe44gxMJiDZ3nMGJBESbO87gRAKi7ZuOE2/8JzaDE19ogzM4kYBoc8cZnEhAtLnj/jq46/Wa0Pl8/hjFerrZhnccsPb7fcoCHHPGbhSEJxoODkjAi7kDbr1ex+1p1kPBAWeJBGCXYkacTw/uWTeOABWfcxi4GiA1sbHAVmsNXKts/tC9Bie+WAZncCIB0eaOMziRgGhzxxmcSEC0ueMMTiQg2txxBicSEG1NO44P53ynlsVayXO32z1sfBWV72NU73xcKE5+HVyZR1kw+xTNiOIZe4p+657a524KbimZw+GwFJJizKgOi4k2B1d2RCwaKOV5TI4zYsr98o54Vsa1njcHF4uLX4VfLpcvXUXR+DhjnlX+que9UWNzcHQNygXSMSivGYF0u93S7V3AYmSPsyygobxmjDHs9VJzcBQSC6TrIgTiUAmZNQJ0jI93EtdTXcABIxYKCLRULJBRGcddqNzrPe8CjqIoFIDMswDH/2KAYY7oLtaIM9Y5npE7uIv5SHUDR5H8/XpWNHCAhgDGGuEphZc7yr1R867gKJLiEfOfii4DWK3vp/crcd3BkSQA8jsnc/aeKQMDGvNnMaP2hoDLxQINAREwq9UqIebszQgs5z4UXE4ij/f7PaG8nnnsCW5mDtW5GVw1sk+DwX1yqP45DbjtdvvxYZ83i81mU11Ib8M04I7H4wPc6XTqzaH6+aYBV535YIPBiS+AwRmcSEC0ueMMTiQg2txxBicSEG2TdJyY/UCbwYnwDc7gRAKizR0ngnsDAAD//3mgaJoAAAAGSURBVAMA0o4AcxiYDHAAAAAASUVORK5CYII=" style="width:38px; height:38px; vertical-align:middle; filter: grayscale(1) invert({'1' if st.session_state.dark_mode else '0'}); opacity:0.8;">
                     </div>
                   </div>
                 `;
                 container.appendChild(icons);
-
-                icons.querySelector('[data-action="ai"]').addEventListener('click', (e) => {{
+ 
+                icons.querySelector('.tangen-toggle-ai-trigger').addEventListener('click', (e) => {{
                   e.stopPropagation();
-                  // Target the sidebar checkbox to trigger a rerun
                   const sidebar = doc.querySelector('section[data-testid="stSidebar"]');
                   if (sidebar) {{
                     const checkbox = sidebar.querySelector('input[type="checkbox"]');
                     if (checkbox) checkbox.click();
                   }}
                 }});
+     }});
             }}
           }}
           init();
