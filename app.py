@@ -1,26 +1,62 @@
 import sys
 import os
 import streamlit as st
+import json
+import streamlit.components.v1 as components
+import time
+from datetime import datetime
+import html as html_lib
 
 # Add src to path so we can import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 from crawler import DocumentLoader
 from search import SearchEngine
+from ai_agent import TangenAIAgent
 
 # Page configuration
 st.set_page_config(page_title="TangenAI", page_icon="🔍", layout="wide")
 
-# Initialize Engine in session state so index stays persistent across interaction
+# Initialization
+if "loader" not in st.session_state:
+    st.session_state.loader = DocumentLoader()
 if "engine" not in st.session_state:
     st.session_state.engine = SearchEngine()
-    st.session_state.loader = DocumentLoader()
-    
-    # Preload local sample docs silently
-    sample_path = os.path.join(os.path.dirname(__file__), "data", "sample_docs")
-    local_docs = st.session_state.loader.load_local_documents(sample_path)
-    if local_docs:
-        for doc_id, doc_data in local_docs.items():
-            st.session_state.engine.add_document(doc_id, doc_data)
+if "ai_agent" not in st.session_state:
+    st.session_state.ai_agent = TangenAIAgent()
+if "search_query" not in st.session_state:
+    st.session_state.search_query = ""
+if "last_query" not in st.session_state:
+    st.session_state.last_query = ""
+if "recent_searches" not in st.session_state:
+    st.session_state.recent_searches = []
+if "ai_mode" not in st.session_state:
+    st.session_state.ai_mode = False
+if "vFinal_input" not in st.session_state:
+    st.session_state.vFinal_input = ""
+
+# Preload documents (only once per session)
+if "docs_loaded" not in st.session_state:
+    st.session_state.docs_loaded = False
+
+if not st.session_state.docs_loaded:
+    with st.spinner("Initializing Search Index..."):
+        # Preload local sample docs
+        sample_path = os.path.join(os.path.dirname(__file__), "data", "sample_docs")
+        if os.path.exists(sample_path):
+            local_docs = st.session_state.loader.load_local_documents(sample_path)
+            for doc_id, doc_data in local_docs.items():
+                st.session_state.engine.add_document(doc_id, doc_data)
+
+        # Preload social data
+        social_path = os.path.join(os.path.dirname(__file__), "data", "social")
+        if os.path.exists(social_path):
+            for filename in os.listdir(social_path):
+                if filename.endswith(".json"):
+                    with open(os.path.join(social_path, filename), "r") as f:
+                        social_data = json.load(f)
+                        for item in social_data:
+                            st.session_state.engine.add_document(item["id"], item)
+        st.session_state.docs_loaded = True
 
 # Inject Custom CSS for Premium Look
 st.markdown("""
@@ -37,6 +73,13 @@ st.markdown("""
     .stApp {
         background-color: #ffffff;
         color: #202124;
+    }
+
+    /* Reduce Streamlit default top padding (Google-like vertical balance) */
+    section.main > div.block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2.5rem !important;
+        max-width: 1000px !important;
     }
     
     /* Google Logo/Header Styling */
@@ -65,6 +108,13 @@ st.markdown("""
         margin-bottom: 3rem;
         text-transform: uppercase;
         letter-spacing: 2px;
+    }
+    
+    /* Hide sidebar entirely to hide the internal toggle */
+    [data-testid="stSidebar"], [data-testid="stSidebarNav"], .stSidebar {
+        display: none !important;
+        width: 0 !important;
+        visibility: hidden !important;
     }
     
     /* Google Search Bar Styling - Nuclear Fix for BaseWeb Ghost Arcs */
@@ -186,6 +236,9 @@ st.markdown("""
     .badge-youtube { color: #FF0000 !important; border-color: #FF000022 !important; background: #FF000008 !important; }
     .badge-x { color: #000000 !important; border-color: #00000022 !important; background: #00000008 !important; }
     .badge-linkedin { color: #0077B5 !important; border-color: #0077B522 !important; background: #0077B508 !important; }
+    .badge-facebook { color: #1877F2 !important; border-color: #1877F222 !important; background: #1877F208 !important; }
+    .badge-instagram { color: #E4405F !important; border-color: #E4405F22 !important; background: #E4405F08 !important; }
+    .badge-news { color: #70757a !important; border-color: #70757a44 !important; background: #f8f9fa !important; font-weight: 600 !important; }
 
     /* Sidebar overlay */
     section[data-testid="stSidebar"] {
@@ -223,165 +276,781 @@ st.markdown("""
         transition: none !important;
         transform: none !important;
     }
+
+    /* TangenAI Pagination Styling */
+    .pagination-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin: 60px 0;
+        width: 100%;
+        font-family: 'Product Sans', Arial, sans-serif;
+    }
+    .tangenai-logo-p {
+        font-size: 2.8rem;
+        display: flex;
+        gap: 0px;
+        margin-bottom: -10px;
+        letter-spacing: -1px;
+    }
+    .page-numbers-row {
+        display: flex;
+        gap: 0px;
+        justify-content: center;
+        width: 100%;
+        padding-left: 32px; /* Offset for 'T' */
+    }
+    .page-num-btn {
+        width: 28px;
+        text-align: center;
+        font-size: 0.95rem;
+        color: #1a73e8;
+        cursor: pointer;
+    }
+    .page-num-btn:hover { text-decoration: underline; }
+    .page-num-active { color: #202124; cursor: default; }
+    
+    /* Next Button Styling */
+    .next-wrap {
+        margin-left: 25px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: #1a73e8;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .next-wrap:hover { text-decoration: underline; }
+    .next-arrow { font-size: 1.4rem; font-weight: bold; margin-bottom: -5px; }
+    .next-text { font-size: 0.9rem; }
+    
+    /* Clean buttons for numbers */
+    div[data-testid="column"] button {
+        background: transparent !important;
+        border: none !important;
+        color: #1a73e8 !important;
+        padding: 0 !important;
+        min-width: 20px !important;
+        width: 100% !important;
+        height: auto !important;
+        font-size: 0.9rem !important;
+    }
+    div[data-testid="column"] button:hover {
+        text-decoration: underline !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+    div[data-testid="column"] button p {
+        margin: 0 !important;
+    }
+    /* Clean buttons for suggestions */
+    .suggestion-box div[data-testid="stButton"] button {
+        background: transparent !important;
+        border: none !important;
+        color: #202124 !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        padding: 12px 20px !important;
+        border-radius: 0 !important;
+        font-family: inherit !important;
+        font-size: 1.05rem !important;
+        box-shadow: none !important;
+    }
+    .suggestion-box div[data-testid="stButton"] button:hover {
+        background-color: #f8f9fa !important;
+    }
+    .suggestion-box div[data-testid="stButton"] button p {
+        margin: 0 !important;
+        font-weight: 400 !important;
+    }
+    .suggestion-box {
+        background: white !important;
+        border-radius: 0 0 24px 24px !important;
+        box-shadow: 0 4px 6px rgba(32,33,36,0.2) !important;
+        border: 1px solid #dfe1e5 !important;
+        border-top: none !important;
+        margin-top: -15px !important; /* Overlap with search bar */
+        padding-top: 15px !important;
+        position: absolute !important;
+        width: 100% !important;
+        z-index: 10000 !important;
+        overflow: hidden !important;
+    }
+    .stTextInput { z-index: 10001 !important; position: relative !important; }
+
+    /* --- Design System & Typography --- */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* --- Universal Layout --- */
+    .stApp {
+        background-color: #ffffff;
+    }
+
+    .main-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        min-height: 100vh;
+        box-sizing: border-box;
+        transition: all 0.5s ease-in-out;
+    }
+
+    .home-header {
+        margin-top: 6vh;
+        margin-bottom: 18px;
+        text-align: center;
+    }
+
+    .results-header {
+        margin-top: 20px;
+        margin-bottom: 20px;
+        align-self: flex-start;
+        padding-left: 20px;
+    }
+
+    /* --- Super Search Bar (Google Style) --- */
+    .search-box-unified {
+        width: 100%;
+        max-width: 650px;
+        height: 52px;
+        background: white;
+        border: 1px solid #dfe1e5;
+        border-radius: 26px;
+        display: flex;
+        align-items: center;
+        padding: 0 15px;
+        box-shadow: none;
+        transition: box-shadow 0.2s, border-radius 0.2s;
+        position: relative;
+        z-index: 1001;
+    }
+
+    .search-box-unified:hover, .search-box-unified:focus-within {
+        box-shadow: 0 1px 6px rgba(32,33,36,0.28);
+        border-color: rgba(223,225,229,0);
+    }
+    
+    /* When history is open, round top corners only */
+    .search-box-active {
+        border-radius: 26px 26px 0 0 !important;
+        box-shadow: 0 1px 6px rgba(32,33,36,0.28) !important;
+    }
+
+    .icon-btn {
+        color: #70757a;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s;
+        background: transparent;
+        border: none;
+    }
+    .icon-btn:hover { color: #202124; }
+    
+    .search-input-wrap {
+        flex-grow: 1;
+        margin-top: -5px;
+    }
+    .search-input-wrap div[data-testid="stTextInput"] > div > div > input {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        font-size: 1.1rem !important;
+        padding-left: 10px !important;
+    }
+
+    /* --- Functional Dropdown --- */
+    .history-dropdown {
+        position: absolute;
+        top: 51px;
+        left: -1px;
+        right: -1px;
+        background: white;
+        border: 1px solid #dfe1e5;
+        border-top: none;
+        border-radius: 0 0 26px 26px;
+        box-shadow: 0 4px 6px rgba(32,33,36,0.28);
+        z-index: 1000;
+        padding: 10px 0;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .history-item {
+        display: flex;
+        align-items: center;
+        padding: 8px 20px;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    .history-item:hover { background: #f1f3f4; }
+    .history-item span { color: #202124; font-size: 0.95rem; }
+    .history-clock { color: #9aa0a6; margin-right: 15px; font-size: 16px; }
+
+    /* --- AI Toggle Pill --- */
+    .ai-pill {
+        background: #f8f9fa;
+        border: 1px solid #dfe1e5;
+        border-radius: 20px;
+        padding: 5px 15px;
+        font-size: 0.85rem;
+        color: #3c4043;
+        font-weight: 500;
+        margin-left: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .ai-pill-active {
+        background: #e8f0fe;
+        border-color: #1a73e8;
+        color: #1a73e8;
+    }
+
+    /* --- Result Cards --- */
+    .result-card {
+        margin-bottom: 28px;
+        max-width: 650px;
+    }
+    .result-url { color: #202124; font-size: 0.875rem; margin-bottom: 4px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .result-title { color: #1a0dab; font-size: 1.25rem; font-weight: 400; text-decoration: none; display: block; margin-bottom: 4px; }
+    .result-title:hover { text-decoration: underline; }
+    .result-snippet { color: #4d5156; font-size: 0.875rem; line-height: 1.58; }
+
+    /* --- Modal Styling --- */
+    .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    .modal-content {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Main Header Design (Google Colors)
-st.markdown('<div class="hero-title"><span class="g-blue">T</span><span class="g-red">a</span><span class="g-yellow">n</span><span class="g-blue">g</span><span class="g-green">e</span><span class="g-red">n</span><span class="g-blue">A</span><span class="g-green">I</span></div>', unsafe_allow_html=True)
-st.markdown('<div class="hero-subtitle">High-Performance TF-IDF Intelligence</div>', unsafe_allow_html=True)
+# --- Initialization ---
+if "show_modal" not in st.session_state: st.session_state.show_modal = False
+if "voice_active" not in st.session_state: st.session_state.voice_active = False
+if "dark_mode" not in st.session_state: st.session_state.dark_mode = False
 
-# Sidebar for Operations/Crawling (Styled as a tool drawer)
-with st.sidebar:
-    st.header("⚙️ Search Tools")
-    st.write(f"**Index size:** {st.session_state.engine.indexer.get_total_documents()} documents")
+# --- Dark Mode Injection ---
+dark_css = """
+<style>
+    .stApp { background-color: #202124 !important; color: #e8eaed !important; }
+    .search-box-unified { background: #3c4043 !important; border-color: #5f6368 !important; }
+    .search-box-unified:hover { box-shadow: 0 1px 6px rgba(0,0,0,0.5) !important; }
+    .search-input-wrap input { color: #e8eaed !important; }
+    .history-dropdown { background: #3c4043 !important; border-color: #5f6368 !important; }
+    .history-item:hover { background: #4a4d51 !important; }
+    .history-item span { color: #e8eaed !important; }
+    .result-title { color: #8ab4f8 !important; }
+    .result-snippet { color: #bdc1c6 !important; }
+    .modal-content { background: #202124 !important; color: #e8eaed !important; }
+    .icon-btn { color: #9aa0a6 !important; }
     
-    st.divider()
+    .premium-toggle-box {
+        position: fixed;
+        top: 25px;
+        right: 40px;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: {"rgba(40, 40, 40, 0.85)" if st.session_state.dark_mode else "rgba(255, 255, 255, 0.85)"};
+        backdrop-filter: blur(12px);
+        padding: 10px 20px;
+        border-radius: 40px;
+        border: 1px solid {"rgba(255,255,255,0.1)" if st.session_state.dark_mode else "rgba(0,0,0,0.1)"};
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .premium-toggle-box:hover {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+    }
     
-    st.subheader("🌐 Add Source")
-    url_to_crawl = st.text_input("Enter URL", placeholder="https://en.wikipedia.org...")
-    if st.button("Index Webpage", use_container_width=True):
-        if url_to_crawl:
-            with st.spinner("Indexing..."):
-                docs = st.session_state.loader.crawl_webpage(url_to_crawl)
-                if docs:
-                    for url_id, doc_data in docs.items():
-                        st.session_state.engine.add_document(url_id, doc_data)
-                    st.success(f"Indexed {url_to_crawl}")
-                    st.rerun()
+    /* Logo / Home Navigation styling */
+    .logo-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        margin-bottom: 2rem;
+    }
+    .logo-btn button {
+        background: transparent !important;
+        border: none !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 800 !important;
+        letter-spacing: -2px !important;
+        color: inherit !important;
+        box-shadow: none !important;
+        transition: transform 0.2s !important;
+    }
+    .logo-btn button:hover {
+        transform: scale(1.02);
+    }
+</style>
+"""
+
+# --- Theme CSS ---
+if st.session_state.dark_mode:
+    st.markdown(dark_css, unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <style>
+      .premium-toggle-box {
+        position: fixed;
+        top: 18px;
+        right: 22px;
+        z-index: 9999;
+        backdrop-filter: blur(12px);
+        padding: 10px 18px;
+        border-radius: 999px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      .premium-toggle-box:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.16);
+      }
+      .premium-toggle-inner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        font-size: 0.92rem;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# --- Real Streamlit controls (no hidden buttons) ---
+top_spacer = st.container()
+with top_spacer:
+    c1, c2, c3 = st.columns([6, 1.5, 1.5])
+    with c3:
+        # Theme toggle moved to floating overlay
+        pass
+
+def go_home():
+    st.session_state.search_query = ""
+    st.session_state.last_query = ""
+    st.session_state.vFinal_input = ""
+
+# --- UI Layout State ---
+is_results_page = bool(st.session_state.search_query)
+header_class = "results-header" if is_results_page else "home-header"
+
+# 1. Branding (functional home)
+brand_size = "3.6rem" if is_results_page else "6rem"
+st.markdown(
+    f"""
+    <div style="display:flex; justify-content:center; width:100%; margin-top:{'0.5rem' if is_results_page else '6vh'};">
+      <button
+        onclick="window.location.reload()"
+        style="all:unset; cursor:pointer; text-align:center; font-family:'Product Sans','Inter',sans-serif;">
+        <div style="font-size:{brand_size}; font-weight:700; letter-spacing:-2px; line-height:1.05;">
+          <span style="color:#4285F4;">T</span><span style="color:#EA4335;">a</span><span style="color:#FBBC05;">n</span><span style="color:#4285F4;">g</span><span style="color:#34A853;">e</span><span style="color:#EA4335;">n</span><span style="color:#4285F4;">A</span><span style="color:#34A853;">I</span>
+        </div>
+      </button>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+if not is_results_page:
+    st.markdown('<div style="color: #70757a; font-size: 1.15rem; margin-bottom: 28px; text-align: center;">High-Performance Entity Intelligence</div>', unsafe_allow_html=True)
+
+# 2. Functional "+" Source Modal
+if st.session_state.show_modal:
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="modal-content">', unsafe_allow_html=True)
+        st.subheader("➕ Add Data Source")
+        source_url = st.text_input("Ingest URL", placeholder="https://en.wikipedia.org/wiki/...")
+        m_col1, m_col2 = st.columns(2)
+        with m_col1:
+            if st.button("Index Now", use_container_width=True):
+                if source_url:
+                    with st.spinner("Indexing..."):
+                        docs = st.session_state.loader.crawl_webpage(source_url)
+                        if docs:
+                            for url_id, d in docs.items(): st.session_state.engine.add_document(url_id, d)
+                            st.success("Indexed!")
+                            st.session_state.show_modal = False
+                            st.rerun()
+        with m_col2:
+            if st.button("Close", key="close_modal", use_container_width=True):
+                st.session_state.show_modal = False
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# --- Final Advanced UI Construction ---
+st.markdown(f"""
+<style>
+    /* Dark Mode Core Overrides */
+    {'.stApp, div[data-testid="stAppViewContainer"] { background-color: #202124 !important; color: #e8eaed !important; }' if st.session_state.dark_mode else ''}
+
+    /* --- Google-like single search bar (styles applied to the real Streamlit input) --- */
+    input.tangen-search-input {{
+        background: {"#3c4043" if st.session_state.dark_mode else "#ffffff"} !important;
+        color: {"#e8eaed" if st.session_state.dark_mode else "#202124"} !important;
+        border: 1px solid {"#5f6368" if st.session_state.dark_mode else "#dfe1e5"} !important;
+        border-radius: 26px !important;
+        height: 52px !important;
+        line-height: 52px !important;
+        font-size: 1.05rem !important;
+        padding-left: 48px !important;  /* plus icon */
+        padding-right: 170px !important; /* mic + ai pill */
+        transition: box-shadow 0.18s ease, border-color 0.18s ease !important;
+    }}
+    input.tangen-search-input:hover {{
+        box-shadow: 0 1px 6px rgba(32,33,36,0.28) !important;
+        border-color: rgba(223,225,229,0) !important;
+    }}
+    input.tangen-search-input:focus {{
+        box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.16), 0 1px 6px rgba(32,33,36,0.28) !important;
+        border-color: rgba(26, 115, 232, 0.55) !important;
+        outline: none !important;
+    }}
+
+    /* Container we attach to the Streamlit text input widget via JS */
+    .tangen-search-container {{
+        position: relative !important;
+        max-width: 650px !important;
+        margin: 0 auto !important;
+    }}
+
+    .tangen-search-icons {{
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }}
+    .tangen-search-icon-left {{
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #70757a;
+        font-size: 22px;
+        opacity: 0.8;
+        pointer-events: auto;
+    }}
+    .tangen-search-icon-right {{
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        pointer-events: auto;
+    }}
+    .tangen-icon-btn {{
+        width: 34px;
+        height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        cursor: pointer;
+        user-select: none;
+        font-size: 18px;
+        color: #4285f4;
+        background: transparent;
+        transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+    }}
+    .tangen-icon-btn:hover {{
+        transform: translateY(-1px);
+        background: rgba(26, 115, 232, 0.08);
+        color: #1a73e8;
+    }}
+    .tangen-icon-btn:active {{
+        transform: translateY(0);
+        background: rgba(26, 115, 232, 0.14);
+    }}
+    .tangen-icon-btn:focus {{
+        outline: 2px solid rgba(26,115,232,0.35);
+        outline-offset: 2px;
+    }}
+    
+    /* Autocomplete & History unified */
+    .dropdown-box {{
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: {"#3c4043" if st.session_state.dark_mode else "white"};
+        border: 1px solid {"#5f6368" if st.session_state.dark_mode else "#dfe1e5"};
+        border-top: none;
+        border-radius: 0 0 24px 24px;
+        box-shadow: 0 4px 6px rgba(32,33,36,0.28);
+        z-index: 1000;
+        padding-bottom: 10px;
+        opacity: 0;
+        transform: translateY(-4px);
+        transition: opacity 120ms ease-out, transform 120ms ease-out;
+        pointer-events: none;
+    }}
+    .dropdown-box.open {{
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }}
+
+    .suggestion-item {{
+        padding: 10px 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: {"#e8eaed" if st.session_state.dark_mode else "#202124"};
+        font-size: 0.98rem;
+        line-height: 1.2;
+        user-select: none;
+    }}
+    .suggestion-item:hover {{
+        background: {"#4a4d51" if st.session_state.dark_mode else "#f1f3f4"};
+    }}
+    .suggestion-item.active {{
+        background: {"#3b6bdc33" if st.session_state.dark_mode else "#e8f0fe"};
+    }}
+    
+    .dropdown-box .stButton button {{
+        background: none !important;
+        border: none !important;
+        text-align: left !important;
+        padding: 8px 45px !important;
+        color: {"#e8eaed" if st.session_state.dark_mode else "#202124"} !important;
+        width: 100%;
+    }}
+    .dropdown-box .stButton button:hover {{
+        background: {"#4a4d51" if st.session_state.dark_mode else "#f1f3f4"} !important;
+    }}
+    
+    /* AI Mode Pill (Internal to Search Bar) */
+    .tangen-ai-pill-internal {{
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 18px;
+        background: {"#3c4043" if st.session_state.dark_mode else "#f1f3f4"} !important;
+        border: 1px solid {"#5f6368" if st.session_state.dark_mode else "#dfe1e5"} !important;
+        color: {"#e8eaed" if st.session_state.dark_mode else "#202124"} !important;
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+        white-space: nowrap;
+    }}
+    .tangen-ai-pill-internal:hover {{
+        background: {"#4a4d51" if st.session_state.dark_mode else "#e8eaed"} !important;
+    }}
+    .tangen-ai-pill-internal.active {{
+        background: #e8f0fe !important;
+        color: #1a73e8 !important;
+        border-color: #1a73e8 !important;
+    }}
+    .tangen-ai-pill-internal i {{
+        font-size: 14px;
+    }}
+</style>
+""", unsafe_allow_html=True)
+
+search_col = st.columns([1, 6, 1])[1] if not is_results_page else st.container()
+
+with search_col:
+    # Use on_change to trigger search immediately on Enter
+    def on_search():
+        query_text = st.session_state.vFinal_input.strip()
+        if query_text:
+            if query_text in st.session_state.recent_searches:
+                st.session_state.recent_searches.remove(query_text)
+            st.session_state.recent_searches.insert(0, query_text)
+            st.session_state.recent_searches = st.session_state.recent_searches[:10]
+            st.session_state.search_query = query_text
+            st.session_state.last_query = query_text
+
+    query = st.text_input(
+        "Search",
+        placeholder="Search anything...",
+        label_visibility="collapsed",
+        key="vFinal_input",
+        on_change=on_search
+    )
+
+    # Simplified JS for icons and AI toggle
+    components.html(
+        f"""
+        <script>
+        (function () {{
+          const doc = (window.parent && window.parent.document) ? window.parent.document : document;
+          
+          function init() {{
+            const input = doc.querySelector('input[placeholder="Search anything..."]');
+            if (!input) return setTimeout(init, 50);
+
+            input.classList.add('tangen-search-input');
+            const container = input.closest('div[data-testid="stTextInput"]') || input.parentElement;
+            if (!container) return;
+            container.classList.add('tangen-search-container');
+
+            if (!container.querySelector('.tangen-search-icons')) {{
+                const icons = doc.createElement('div');
+                icons.className = 'tangen-search-icons';
+                icons.innerHTML = `
+                  <div class="tangen-search-icon-left" style="visibility:hidden">+</div>
+                  <div class="tangen-search-icon-right">
+                    <div class="tangen-icon-btn" role="button">
+                      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAE4AAABGCAYAAABi+aJwAAACmUlEQVR4AeyY602CQRBFN5ZABfwmFEAplEEBhBoog1IogwpoQT2aJZuR+Lk37sN4Sa77mrvMHEYRXl79kAi8JD8kAgYnYUvJ4AxOJCDa3HEGJxIQbe44gxMJiDZ3nMGJBESbO87gRAKi7ZuOE2/8JzaDE19ogzM4kYBoc8cZnEhAtLnj/jq46/Wa0Pl8/hjFerrZhnccsPb7fcoCHHPGbhSEJxoODkjAi7kDbr1ex+1p1kPBAWeJBGCXYkacTw/uWTeOABWfcxi4GiA1sbHAVmsNXKts/tC9Bie+WAZncCIB0eaOMziRgGhzxxmcSEC0ueMMTiQg2txxBicSEG1NO44P53ynlsVayXO32z1sfBWV72NU73xcKE5+HVyZR1kw+xTNiOIZe4p+657a524KbimZw+GwFJJizKgOi4k2B1d2RCwaKOV5TI4zYsr98o54Vsa1njcHF4uLX4VfLpcvXUXR+DhjnlX+que9UWNzcHQNygXSMSivGYF0u93S7V3AYmSPsyygobxmjDHs9VJzcBQSC6TrIgTiUAmZNQJ0jI93EtdTXcABIxYKCLRULJBRGcddqNzrPe8CjqIoFIDMswDH/2KAYY7oLtaIM9Y5npE7uIv5SHUDR5H8/XpWNHCAhgDGGuEphZc7yr1R867gKJLiEfOfii4DWK3vp/crcd3BkSQA8jsnc/aeKQMDGvNnMaP2hoDLxQINAREwq9UqIebszQgs5z4UXE4ij/f7PaG8nnnsCW5mDtW5GVw1sk+DwX1yqP45DbjtdvvxYZ83i81mU11Ib8M04I7H4wPc6XTqzaH6+aYBV535YIPBiS+AwRmcSEC0ueMMTiQg2txxBicSEG2TdJyY/UCbwYnwDc7gRAKizR0ngnsDAAD//3mgaJoAAAAGSURBVAMA0o4AcxiYDHAAAAAASUVORK5CYII=" style="width:36px; height:36px; vertical-align:middle; filter: grayscale(1) invert({'1' if st.session_state.dark_mode else '0'}); opacity:0.8;">
+                    </div>
+                    <div class="tangen-ai-pill-internal {'active' if st.session_state.ai_mode else ''}" role="button" data-action="ai">
+                      <span>✨ AI Mode</span>
+                    </div>
+                  </div>
+                `;
+                container.appendChild(icons);
+
+                icons.querySelector('[data-action="ai"]').addEventListener('click', (e) => {{
+                  e.stopPropagation();
+                  // Target the sidebar checkbox to trigger a rerun
+                  const sidebar = doc.querySelector('section[data-testid="stSidebar"]');
+                  if (sidebar) {{
+                    const checkbox = sidebar.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.click();
+                  }}
+                }});
+            }}
+          }}
+          init();
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+    # Hidden sidebar toggle for AI Mode (Completely removed from main view)
+    with st.sidebar:
+        st.checkbox("Toggle AI", key="ai_toggle_sidebar", value=st.session_state.ai_mode, on_change=lambda: st.session_state.update(ai_mode=not st.session_state.ai_mode))
+
+    # 2. Search Suggestions Dropdown (Simplified)
+    suggest_items = []
+    icon = "🕒"
+    if not st.session_state.search_query:
+        search_text = (query or "").strip()
+        if search_text:
+            all_terms = list(st.session_state.engine.indexer.index['content'].keys())
+            suggest_items = [t for t in all_terms if t.startswith(search_text.lower())][:6]
+            icon = "🔍"
         else:
-            st.warning("Provide a URL.")
-            
-    st.divider()
+            suggest_items = st.session_state.recent_searches[:10]
+
+    if suggest_items:
+        items_js = json.dumps(suggest_items)
+        st.markdown(f"""
+            <script>
+            (function() {{
+                const doc = (window.parent && window.parent.document) ? window.parent.document : document;
+                const input = doc.querySelector('input[placeholder="Search anything..."]');
+                const container = doc.querySelector('.tangen-search-container');
+                if (!input || !container) return;
+
+                // Remove old dropdown
+                const oldList = doc.querySelector('#suggestions-list');
+                if (oldList) oldList.remove();
+
+                const items = {items_js};
+                const list = doc.createElement('div');
+                list.id = 'suggestions-list';
+                list.className = 'dropdown-box';
+                list.role = 'listbox';
+                list.style.display = 'block'; 
+                
+                items.forEach((item) => {{
+                    const el = doc.createElement('div');
+                    el.className = 'suggestion-item';
+                    el.innerHTML = `{icon} ${{item}}`;
+                    el.addEventListener('mousedown', (e) => {{
+                        e.preventDefault();
+                        input.value = item;
+                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        const submitBtn = doc.querySelector('#tangen-hidden-submit-btn button');
+                        if (submitBtn) submitBtn.click();
+                    }});
+                    list.appendChild(el);
+                }});
+                container.appendChild(list);
+
+                input.onfocus = () => {{ 
+                    if (doc.querySelector('#suggestions-list'))
+                        doc.querySelector('#suggestions-list').style.display = 'block'; 
+                }};
+                input.onblur = () => {{ 
+                    setTimeout(() => {{ 
+                        const l = doc.querySelector('#suggestions-list');
+                        if (l) l.style.display = 'none'; 
+                    }}, 200); 
+                }};
+            }})();
+            </script>
+        """, unsafe_allow_html=True)
+
+# 5. Search Execution & Results (submitted query only)
+if st.session_state.search_query:
+    current_query = st.session_state.search_query
+    print(f"DEBUG: Executing search for: '{current_query}'")
+    st.markdown('<div style="margin-top: 30px;">', unsafe_allow_html=True)
+    all_results = st.session_state.engine.search(current_query, top_k=50)
+    print(f"DEBUG: Search returned {len(all_results)} results.")
     
-    st.subheader("📁 Local Assets")
-    folder_path = st.text_input("Relative path", value="data/sample_docs")
-    if st.button("Scan Directory", use_container_width=True):
-        if folder_path:
-            full_path = os.path.join(os.path.dirname(__file__), folder_path)
-            with st.spinner("Scanning..."):
-                local_docs = st.session_state.loader.load_local_documents(full_path)
-                if local_docs:
-                    for doc_id, doc_data in local_docs.items():
-                        st.session_state.engine.add_document(doc_id, doc_data)
-                    st.success(f"Indexed {len(local_docs)} files.")
-                    st.rerun()
-
-# Main Search Interaction Area
-search_col1, search_col2, search_col3 = st.columns([1, 4, 1])
-
-# Set a version for the search cache for Semantic Intelligence update
-SEARCH_CACHE_VERSION = "v6_semantic_intelligence"
-
-@st.cache_data(show_spinner=False)
-def perform_search(query_str: str, doc_count: int, version: str):
-    return st.session_state.engine.search(query_str, top_k=50)
-
-def get_suggestion(query_str: str):
-    import difflib
-    words = st.session_state.engine.indexer.index.keys()
-    query_words = query_str.lower().split()
-    suggestions = []
-    for word in query_words:
-        matches = difflib.get_close_matches(word, words, n=1, cutoff=0.8)
-        suggestions.append(matches[0] if matches else word)
-    
-    suggested_query = " ".join(suggestions)
-    return suggested_query if suggested_query != query_str.lower() else None
-
-if "page_number" not in st.session_state:
-    st.session_state.page_number = 1
-
-with search_col2:
-    query = st.text_input("Initiate Query", placeholder="Search anything...", label_visibility="collapsed")
-    
-    if query:
-        # Spell check / Did you mean
-        suggestion = get_suggestion(query)
-        if suggestion:
-            st.markdown(f'<div style="color: #d93025; font-size: 0.95rem; margin-bottom: 25px; margin-left: 20px;">Did you mean: <span style="color: #1a0dab; font-style: italic; font-weight: 400; cursor: pointer; text-decoration: underline;">{suggestion}</span></div>', unsafe_allow_html=True)
-
-        # Retrieve results
-        all_results = perform_search(query, st.session_state.engine.indexer.get_total_documents(), SEARCH_CACHE_VERSION)
+    if not all_results:
+        st.info("No documents match your query.")
+    else:
+        # AI Synthesis
+        if st.session_state.ai_mode:
+            with st.spinner("AI Synthesis in progress..."):
+                synthesis = st.session_state.ai_agent.synthesize(current_query, all_results)
+                st.markdown(f'<div style="background: #f8f9fa; border-radius: 12px; padding: 25px; border-left: 5px solid #1a73e8; margin-bottom: 30px;">{synthesis}</div>', unsafe_allow_html=True)
         
-        if not all_results:
-            st.info("No results found.")
-        else:
-            # 1. Knowledge Panel (Hero Support)
-            top_res = all_results[0]
-            if top_res.get("is_hero") or top_res["score"] > 10:
-                st.markdown(f'<h1 style="font-family: Product Sans; font-size: 2.5rem; margin-top: 1rem; margin-left: 20px;">{top_res["title"]}</h1>', unsafe_allow_html=True)
-                st.markdown(f'<div style="color: #70757a; font-size: 0.9rem; margin-bottom: 20px; margin-left: 20px;">{top_res.get("facts", {}).get("Role", "Result")} • Overview</div>', unsafe_allow_html=True)
-                
-                # Knowledge Mesh (Hero View)
-                hero_col1, hero_col2 = st.columns([2, 1])
-                with hero_col1:
-                    if top_res.get("image_url"):
-                         st.image(top_res["image_url"], use_column_width=True)
-                    st.markdown(f'<div style="font-size: 1.1rem; line-height: 1.6; margin-top: 15px; padding: 20px; background: #f8f9fa; border-radius: 12px; border: 1px solid #dfe1e5;">{top_res["snippet"]} <a href="{top_res["url"]}" target="_blank">Wikipedia</a></div>', unsafe_allow_html=True)
-                
-                with hero_col2:
-                    # Fact Box
-                    if top_res.get("facts"):
-                        st.markdown('<div style="background: #f8f9fa; padding: 15px; border-radius: 12px; border: 1px solid #dfe1e5;">', unsafe_allow_html=True)
-                        st.write("**About**")
-                        for label, val in top_res["facts"].items():
-                            st.markdown(f'<div style="font-size: 0.85rem; margin-bottom: 8px;"><b>{label}</b>: {val}</div>', unsafe_allow_html=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
+        # Result List
+        st.markdown(f'<div style="color: #70757a; font-size: 0.875rem; margin-bottom: 20px;">About {len(all_results)} results</div>', unsafe_allow_html=True)
+        
+        # Simple pagination for demonstration
+        for res in all_results[:10]:
+            st.markdown(f"""
+            <div class="result-card">
+                <span class="result-url">{res['url']}</span>
+                <a href="{res['url']}" target="_blank" class="result-title">{res['title']}</a>
+                <div class="result-snippet">{res['snippet']}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                st.divider()
-
-            # 2. Standard Results List
-            st.markdown(f'<div style="color: #70757a; font-size: 0.875rem; margin-bottom: 20px; margin-left: 20px;">About {len(all_results)} results</div>', unsafe_allow_html=True)
-            
-            # Pagination Logic
-            results_per_page = 8
-            total_pages = (len(all_results) + results_per_page - 1) // results_per_page
-            start_idx = (st.session_state.page_number - 1) * results_per_page
-            end_idx = start_idx + results_per_page
-            results = all_results[start_idx:end_idx]
-
-            for res in results:
-                platform = res.get("platform", "Web")
-                platform_class = f"badge-{platform.lower()}" if platform != "Web" else ""
-                
-                # Semantic Badge if hero/entity match
-                is_hero = res.get("is_hero", False)
-                semantic_badge = '<span class="platform-badge badge-semantic">✨ Semantic Match</span>' if is_hero else ''
-                
-                # Metadata string for social results
-                meta_info = ""
-                if platform == "Reddit":
-                    meta_info = f" • r/{res.get('metadata', {}).get('subreddit')} • {res.get('metadata', {}).get('upvotes')} ↑"
-                elif platform == "YouTube":
-                    meta_info = f" • Video"
-                
-                badge_html = f'<div style="display: flex; align-items: center; gap: 4px;">{semantic_badge}<span class="platform-badge {platform_class}">{platform}</span></div>' if (platform != "Web" or is_hero) else ''
-                
-                img_tag = f'<img src="{res["image_url"]}" style="width: 92px; height: 92px; object-fit: cover; border-radius: 8px; margin-left: 20px; flex-shrink: 0;" />' if res.get("image_url") else ''
-                
-                card_html = f'<div class="result-container">' \
-                            f'<div style="display: flex; justify-content: space-between; align-items: flex-start;">' \
-                            f'<div style="flex-grow: 1;">' \
-                            f'<div class="result-link-container">' \
-                            f'<div style="display: flex; align-items: center; margin-bottom: 2px;">{badge_html}<span class="result-url">{res["url"]}</span></div>' \
-                            f'<a href="{res["url"]}" target="_blank" style="text-decoration: none;">' \
-                            f'<div class="result-title">{res["title"]}</div>' \
-                            f'</a>' \
-                            f'</div>' \
-                            f'<div class="result-snippet">{res["snippet"]}<span style="color: #70757a; font-size: 0.85rem;">{meta_info}</span></div>' \
-                            f'</div>' \
-                            f'{img_tag}' \
-                            f'</div>' \
-                            f'</div>'
-                st.markdown(card_html, unsafe_allow_html=True)
-            
-            # Pagination Controls
-            if total_pages > 1:
-                st.markdown('<div class="pagination-container" style="justify-content: flex-start; padding-left: 20px;">', unsafe_allow_html=True)
-                cols = st.columns(total_pages + 2)
-                for i in range(total_pages):
-                    page = i + 1
-                    if cols[i].button(f"{page}", key=f"page_{page}", type="secondary" if page != st.session_state.page_number else "primary"):
-                        st.session_state.page_number = page
-                        st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)

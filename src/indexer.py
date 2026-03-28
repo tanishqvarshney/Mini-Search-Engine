@@ -8,23 +8,19 @@ class InvertedIndex:
     
     def __init__(self):
         # Maps field -> term -> document_id -> frequency
-        # e.g., index['title']['search'] = {'doc1.txt': 1}
         self.index: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        
+        # Maps field -> document_id -> length
+        self.doc_lengths: Dict[str, Dict[str, int]] = defaultdict(dict)
         
         # Keeps track of all processed documents
         self.document_ids: Set[str] = set()
 
     def add_document(self, doc_id: str, field_tokens: Dict[str, List[str]]):
-        """
-        Adds tokens for various fields to the inverted index.
-        
-        Args:
-            doc_id (str): Unique doc identifier.
-            field_tokens (Dict[str, List[str]]): A map of field_name -> tokens.
-        """
+        """Adds tokens and records length."""
         self.document_ids.add(doc_id)
-        
         for field, tokens in field_tokens.items():
+            self.doc_lengths[field][doc_id] = len(tokens)
             for token in tokens:
                 self.index[field][token][doc_id] += 1
 
@@ -37,10 +33,16 @@ class InvertedIndex:
         return len(self.index.get(field, {}).get(term, {}))
 
     def get_total_documents(self) -> int:
-        """
-        Returns the total number of documents indexed.
-        """
         return len(self.document_ids)
+
+    def get_doc_length(self, doc_id: str, field: str = "content") -> int:
+        return self.doc_lengths.get(field, {}).get(doc_id, 0)
+        
+    def get_avg_doc_length(self, field: str = "content") -> float:
+        lengths = self.doc_lengths.get(field, {}).values()
+        if not lengths:
+            return 0.0
+        return sum(lengths) / len(lengths)
 
 # --- Development / Verification Block ---
 if __name__ == "__main__":

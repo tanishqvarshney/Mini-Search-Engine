@@ -74,25 +74,62 @@ class SocialScraper:
             print(f"YouTube Scrape Failed: {e}")
         return results
 
+    def fetch_news_data(self, keyword: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Fetches latest news snippets using public RSS/Search feeds."""
+        # Using a Google News RSS feed for the keyword
+        url = f"https://news.google.com/rss/search?q={keyword}&hl=en-US&gl=US&ceid=US:en"
+        results = []
+        try:
+            response = requests.get(url, headers=self.headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, features="xml")
+                items = soup.find_all("item")
+                for item in items[:limit]:
+                    title = item.title.text
+                    link = item.link.text
+                    pub_date = item.pubDate.text
+                    description = item.description.text if item.description else f"Latest updates on {keyword}."
+                    
+                    results.append({
+                        "id": f"news_{re.sub(r'\W+', '', title[:20])}",
+                        "platform": "News",
+                        "title": title,
+                        "url": link,
+                        "content": f"{description} Published on {pub_date}.",
+                        "metadata": {
+                            "source": "Google News",
+                            "pub_date": pub_date
+                        }
+                    })
+        except Exception as e:
+            print(f"News Fetch Failed: {e}")
+        return results
+
     def fetch_general_social(self, platform: str, keyword: str) -> List[Dict[str, Any]]:
         """Mocks or uses search proxies for more restricted platforms like X/LinkedIn."""
-        # For X/Instagram/LinkedIn, without an API or Browser-based scraper (Playwright/Selenium),
-        # we index them as 'Platform References' to guide the engine.
+        content_map = {
+            "X": f"Check out the latest real-time updates and trending conversations about {keyword} on X. See what the world is talking about right now.",
+            "Instagram": f"Explore stunning photos, reels, and stories featuring {keyword} on Instagram. Follow the journey through a visual lens.",
+            "Facebook": f"Join the community discussion and stay updated with the latest posts and group highlights about {keyword} on Facebook.",
+            "LinkedIn": f"Professional insights and career updates related to {keyword} on LinkedIn. Connect with experts and follow industry trends."
+        }
+        
         return [{
             "id": f"{platform.lower()}_{keyword.replace(' ', '_')}",
             "platform": platform,
-            "title": f"{keyword} on {platform}",
+            "title": f"{keyword} - Official {platform} Profile & Updates",
             "url": f"https://www.{platform.lower()}.com/search?q={keyword}",
-            "content": f"Discover what's trending about {keyword} on {platform}. Check out real-time updates, photos, and professional insights.",
+            "content": content_map.get(platform, f"Discover what's trending about {keyword} on {platform}."),
             "metadata": {"type": "Social Feed"}
         }]
 
     def ingest_all(self, keyword: str):
         """Orchestrates multi-source ingestion for a topic."""
-        print(f"Ingesting Social Data for: {keyword}...")
+        print(f"Ingesting Social & News Data for: {keyword}...")
         data = []
         data.extend(self.fetch_reddit_data(keyword))
         data.extend(self.fetch_youtube_data(keyword))
+        data.extend(self.fetch_news_data(keyword))
         
         for p in ["X", "LinkedIn", "Instagram", "Facebook"]:
             data.extend(self.fetch_general_social(p, keyword))
@@ -105,6 +142,6 @@ class SocialScraper:
 if __name__ == "__main__":
     scraper = SocialScraper()
     # Let's ingest a few hot topics for the demo
-    topics = ["Virat Kohli", "Lionel Messi", "TangenAI", "Search Engine Optimization"]
+    topics = ["Cristiano Ronaldo", "Virat Kohli", "Lionel Messi", "TangenAI", "Search Engine Optimization"]
     for t in topics:
         scraper.ingest_all(t)
